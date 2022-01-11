@@ -3,7 +3,7 @@ import ahocorasick
 import jieba
 import numpy as np
 import joblib
-from sklearn.externals import joblib
+# from sklearn.externals import joblib
 
 
 class EntityExtractor:
@@ -25,11 +25,13 @@ class EntityExtractor:
         self.disaster_path = os.path.join(cur_dir, 'data/disaster_vocab.txt')
         self.warning_signal_path = os.path.join(cur_dir, 'data/warning_signal_vocab.txt')
         self.sub_warning_signal_path = os.path.join(cur_dir, 'data/sub_warning_signal_vocab.txt')
+        self.trigger_entities_path = os.path.join(cur_dir, 'data/trigger_entities.txt')
 
         self.disaster_entities = [w.strip() for w in open(self.disaster_path, encoding='utf8') if w.strip()]
         self.warning_signal_entities = [w.strip() for w in open(self.warning_signal_path, encoding='utf8') if w.strip()]
         self.sub_warning_signals_entities = [w.strip() for w in open(self.sub_warning_signal_path, encoding='utf8') if
                                              w.strip()]
+        self.trigger_entities = [w.strip() for w in open(self.trigger_entities_path, encoding='utf8') if w.strip()]
 
         self.region_words = list(set(self.disaster_entities + self.warning_signal_entities))
 
@@ -37,12 +39,14 @@ class EntityExtractor:
         self.disaster_tree = self.build_actree(list(set(self.disaster_entities)))
         self.warning_signal_tree = self.build_actree(list(set(self.warning_signal_entities)))
         self.sub_warning_signal_tree = self.build_actree(list(set(self.sub_warning_signals_entities)))
+        self.trigger_entities_tree = self.build_actree(list(set(self.trigger_entities)))
 
         # self.disaster_qwds = ['什么灾害', '是哪种灾害', '怎么回事', '什么情况']
         # self.warning_signal_qwds = ['预警信号', '预警', '什么预警', '什么预警信号']
         self.desc_qwds = ['是什么']
         self.ekp_qwds = ['怎么办', '注意什么', '防御', '措施', '应急', '策略', '注意', '注意哪些']
         self.sub_warning_signals_qwds = ['有哪些预警', '有哪些信号', '预警有哪些', '信号有哪些']
+        self.trigger_qwds = ['是什么预警', '是什么信号']
 
     def build_actree(self, wordlist):
         """
@@ -85,6 +89,13 @@ class EntityExtractor:
                 self.result["sub_warning_signal"] = [word]
             else:
                 self.result["sub_warning_signal"].append(word)
+
+        for i in self.trigger_entities_tree.iter(question):
+            word = i[1][1]
+            if "trigger_entities" not in self.result:
+                self.result["trigger_entities"] = [word]
+            else:
+                self.result["trigger_entities"].append(word)
 
         return self.result
 
@@ -276,38 +287,44 @@ class EntityExtractor:
         # predicted = self.model_predict(feature, self.nb_model)
         # intentions.append(predicted[0])
 
+        # 已知triggerEntities，查询预警信号
+        if self.check_words(self.trigger_qwds, question) and ('trigger_entities' in types):
+            intention = "query_trigger_signal"
+            if intention not in intentions:
+                intentions.append(intention)
+
         # 已知灾害，查询预警信号
-        if self.check_words(self.sub_warning_signals_qwds, question) and ('Disaster' in types):
+        elif self.check_words(self.sub_warning_signals_qwds, question) and ('Disaster' in types):
             intention = "query_warning_signal"
             if intention not in intentions:
                 intentions.append(intention)
 
         # 已知灾害，查询灾害描述
-        if self.check_words(self.desc_qwds, question) and ('Disaster' in types):
+        elif self.check_words(self.desc_qwds, question) and ('Disaster' in types):
             intention = "query_desc"
             if intention not in intentions:
                 intentions.append(intention)
 
         # 已知灾害，查询防御策略
-        if self.check_words(self.ekp_qwds, question) and ('Disaster' in types):
+        elif self.check_words(self.ekp_qwds, question) and ('Disaster' in types):
             intention = "query_ekp"
             if intention not in intentions:
                 intentions.append(intention)
 
         # 已知预警信号，查询预警信号描述
-        if self.check_words(self.desc_qwds, question) and ('sub_warning_signal' in types):
+        elif self.check_words(self.desc_qwds, question) and ('sub_warning_signal' in types):
             intention = "query_desc"
             if intention not in intentions:
                 intentions.append(intention)
 
         # 已知预警信号，查询预警信号防御策略
-        if self.check_words(self.ekp_qwds, question) and ('sub_warning_signal' in types):
+        elif self.check_words(self.ekp_qwds, question) and ('sub_warning_signal' in types):
             intention = "query_ekp"
             if intention not in intentions:
                 intentions.append(intention)
 
         # 若没有识别出实体或意图则调用其它方法
-        if not intentions or not types:
+        elif not intentions or not types:
             intention = "QA_matching"
             if intention not in intentions:
                 intentions.append(intention)
