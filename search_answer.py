@@ -22,6 +22,8 @@ class AnswerSearching:
                     sql = self.transfor_to_sql("sub_warning_signal", data["sub_warning_signal"], intent)
                 elif data.get("Disaster"):
                     sql = self.transfor_to_sql("Disaster", data["Disaster"], intent)
+                elif data.get("trigger_entities"):
+                    sql = self.transfor_to_sql("trigger_entities", data["trigger_entities"], intent)
 
                 if sql:
                     sql_['sql'] = sql
@@ -59,6 +61,10 @@ class AnswerSearching:
         if intent == "query_warning_signal" and label == "Disaster":
             sql = ["MATCH (d:Disaster)-[]->(w:warning_signal) WHERE d.name='{0}' return w.name".format(e) for e in
                    entities]
+
+        # 查询 根据标准对应的预警信号
+        if intent == "query_trigger_signal" and label == "trigger_entities":
+            pass
 
         return sql
 

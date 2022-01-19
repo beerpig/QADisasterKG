@@ -39,7 +39,7 @@ class EntityExtractor:
         self.disaster_tree = self.build_actree(list(set(self.disaster_entities)))
         self.warning_signal_tree = self.build_actree(list(set(self.warning_signal_entities)))
         self.sub_warning_signal_tree = self.build_actree(list(set(self.sub_warning_signals_entities)))
-        self.trigger_entities_tree = self.build_actree(list(set(self.trigger_entities)))
+        self.trigger_entities_tree = self.build_actree_dict(list(set(self.trigger_entities)))
 
         # self.disaster_qwds = ['什么灾害', '是哪种灾害', '怎么回事', '什么情况']
         # self.warning_signal_qwds = ['预警信号', '预警', '什么预警', '什么预警信号']
@@ -47,6 +47,20 @@ class EntityExtractor:
         self.ekp_qwds = ['怎么办', '注意什么', '防御', '措施', '应急', '策略', '注意', '注意哪些']
         self.sub_warning_signals_qwds = ['有哪些预警', '有哪些信号', '预警有哪些', '信号有哪些']
         self.trigger_qwds = ['是什么预警', '是什么信号']
+
+    def build_actree_dict(self, wordlist):
+        """
+        构造trigger_entities 字典tree
+        :param wordlist:
+        :return:
+        """
+        actree = ahocorasick.Automaton()
+        for index, words in enumerate(wordlist):
+            entity = words.split()[0]
+            disaster = words.split()[1]
+            actree.add_word(entity, (index, entity, disaster))
+        actree.make_automaton()
+        return actree
 
     def build_actree(self, wordlist):
         """
@@ -91,7 +105,7 @@ class EntityExtractor:
                 self.result["sub_warning_signal"].append(word)
 
         for i in self.trigger_entities_tree.iter(question):
-            word = i[1][1]
+            word = i[1][2]
             if "trigger_entities" not in self.result:
                 self.result["trigger_entities"] = [word]
             else:
