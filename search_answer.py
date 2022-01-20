@@ -3,13 +3,13 @@ from py2neo import Graph
 
 class AnswerSearching:
     def __init__(self):
-        # self.graph = Graph("http://localhost:7474", auth=("neo4j", "beerpig"))
+        self.graph = Graph("http://localhost:7474", auth=("neo4j", "beerpig"))
         self.top_num = 5
 
     def question_parser(self, data):
         """
         根据不同实体和意图构造cypher查询语句
-        :param data: {"Disaster":[], "warning_signal":[]}
+        :param data: {"disaster":[], "warning_signal":[]}
         :return:
         """
         sqls = []
@@ -20,8 +20,8 @@ class AnswerSearching:
                 sql = []
                 if data.get("sub_warning_signal"):
                     sql = self.transfor_to_sql("sub_warning_signal", data["sub_warning_signal"], intent)
-                elif data.get("Disaster"):
-                    sql = self.transfor_to_sql("Disaster", data["Disaster"], intent)
+                elif data.get("disaster"):
+                    sql = self.transfor_to_sql("disaster", data["disaster"], intent)
                 elif data.get("trigger_entities"):
                     sql = self.transfor_to_sql("trigger_entities", data["trigger_entities"], intent)
 
@@ -43,23 +43,23 @@ class AnswerSearching:
         sql = []
 
         # 查询灾害描述 / 预警信号描述
-        if intent == "query_desc" and label == "Disaster":
-            sql = ["MATCH (d:Disaster) WHERE d.name='{0}' RETURN d.name,d.desc".format(e)
+        if intent == "query_desc" and label == "disaster":
+            sql = ["MATCH (n:introduction) WHERE n.name=~'{0}.*' RETURN n.content".format(e)
                    for e in entities]
         if intent == "query_desc" and label == "sub_warning_signal":
             sql = ["MATCH (w:sub_warning_signal) WHERE w.name='{0}' RETURN w.name,w.desc".format(e)
                    for e in entities]
 
         # 查询防御措施 / 应急方法
-        if intent == "query_ekp" and label == "Disaster":
-            sql = ["MATCH (d:Disaster) WHERE d.name='{0}' return d.name,d.ekp".format(e) for e in entities]
+        if intent == "query_ekp" and label == "disaster":
+            sql = ["MATCH (d:disaster) WHERE d.name='{0}' return d.name,d.ekp".format(e) for e in entities]
         if intent == "query_ekp" and label == "sub_warning_signal":
             sql = ["MATCH (w:sub_warning_signal) WHERE w.name='{0}' " \
                    "return w.name, w.ekp".format(e) for e in entities]
 
         # 查询预警信号
-        if intent == "query_warning_signal" and label == "Disaster":
-            sql = ["MATCH (d:Disaster)-[]->(w:warning_signal) WHERE d.name='{0}' return w.name".format(e) for e in
+        if intent == "query_warning_signal" and label == "disaster":
+            sql = ["MATCH (d:disaster)-[]->(w:warning_signal) WHERE d.name='{0}' return w.name".format(e) for e in
                    entities]
 
         # 查询 根据标准对应的预警信号

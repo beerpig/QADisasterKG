@@ -41,8 +41,6 @@ class EntityExtractor:
         self.sub_warning_signal_tree = self.build_actree(list(set(self.sub_warning_signals_entities)))
         self.trigger_entities_tree = self.build_actree_dict(list(set(self.trigger_entities)))
 
-        # self.disaster_qwds = ['什么灾害', '是哪种灾害', '怎么回事', '什么情况']
-        # self.warning_signal_qwds = ['预警信号', '预警', '什么预警', '什么预警信号']
         self.desc_qwds = ['是什么']
         self.ekp_qwds = ['怎么办', '注意什么', '防御', '措施', '应急', '策略', '注意', '注意哪些']
         self.sub_warning_signals_qwds = ['有哪些预警', '有哪些信号', '预警有哪些', '信号有哪些']
@@ -85,10 +83,10 @@ class EntityExtractor:
 
         for i in self.disaster_tree.iter(question):
             word = i[1][1]
-            if "Disaster" not in self.result:
-                self.result["Disaster"] = [word]
+            if "disaster" not in self.result:
+                self.result["disaster"] = [word]
             else:
-                self.result["Disaster"].append(word)
+                self.result["disaster"].append(word)
 
         for i in self.warning_signal_tree.iter(question):
             word = i[1][1]
@@ -138,7 +136,7 @@ class EntityExtractor:
             for i in range(len(temp)):
                 flag = ""
                 if i == 0:
-                    flag = "Disaster"
+                    flag = "disaster"
                 elif i == 1:
                     flag = "warning_signal"
                 elif i == 2:
@@ -308,19 +306,19 @@ class EntityExtractor:
                 intentions.append(intention)
 
         # 已知灾害，查询预警信号
-        elif self.check_words(self.sub_warning_signals_qwds, question) and ('Disaster' in types):
+        elif self.check_words(self.sub_warning_signals_qwds, question) and ('disaster' in types):
             intention = "query_warning_signal"
             if intention not in intentions:
                 intentions.append(intention)
 
         # 已知灾害，查询灾害描述
-        elif self.check_words(self.desc_qwds, question) and ('Disaster' in types):
+        elif self.check_words(self.desc_qwds, question) and ('disaster' in types):
             intention = "query_desc"
             if intention not in intentions:
                 intentions.append(intention)
 
         # 已知灾害，查询防御策略
-        elif self.check_words(self.ekp_qwds, question) and ('Disaster' in types):
+        elif self.check_words(self.ekp_qwds, question) and ('disaster' in types):
             intention = "query_ekp"
             if intention not in intentions:
                 intentions.append(intention)
