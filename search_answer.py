@@ -19,9 +19,11 @@ class AnswerSearching:
                 sql_["intention"] = intent
                 sql = []
                 if data.get("sub_warning_signal"):
-                    sql = self.transfor_to_sql("sub_warning_signal", data["sub_warning_signal"], intent)
+                    sql = self.transfor_to_sql("sub_signal", data["sub_warning_signal"], intent)
+                    sql_["label"] = "sub_signal"
                 elif data.get("disaster"):
                     sql = self.transfor_to_sql("disaster", data["disaster"], intent)
+                    sql_["label"] = "disaster"
                 elif data.get("trigger_entities"):
                     sql = self.transfor_to_sql("trigger_entities", data["trigger_entities"], intent)
 
@@ -42,27 +44,34 @@ class AnswerSearching:
             return []
         sql = []
 
-        # 查询灾害描述 / 预警信号描述
+        # 查询灾害简介
         if intent == "query_desc" and label == "disaster":
-            sql = ["MATCH (n:introduction) WHERE n.name=~'{0}.*' RETURN n.content".format(e)
+            sql = ["MATCH (n:introduction) WHERE n.name=~'{0}.*' \
+                    Match (n)-[r:rels_disaster2intro]-(p) RETURN p.name, n.content".format(e)
                    for e in entities]
+
+        # 查询预警信号标准
         if intent == "query_desc" and label == "sub_warning_signal":
-            sql = ["MATCH (w:sub_warning_signal) WHERE w.name='{0}' RETURN w.name,w.desc".format(e)
+            sql = ["MATCH (w:sub_signal) WHERE w.name=~'{0}.*' Match (w)-[r:rels_standard2sub_signal]-(p) \
+                    RETURN w.name, p.standard".format(e)
                    for e in entities]
 
         # 查询防御措施 / 应急方法
+        # TODO
         if intent == "query_ekp" and label == "disaster":
             sql = ["MATCH (d:disaster) WHERE d.name='{0}' return d.name,d.ekp".format(e) for e in entities]
-        if intent == "query_ekp" and label == "sub_warning_signal":
-            sql = ["MATCH (w:sub_warning_signal) WHERE w.name='{0}' " \
-                   "return w.name, w.ekp".format(e) for e in entities]
+
+        if intent == "query_ekp" and label == "sub_signal":
+            sql = ["MATCH (w:sub_signal) WHERE w.name=~'{0}.*' Match (w)-[r:rels_signal_ekp]-(p) \
+             return w.name, p.ekp".format(e) for e in entities]
 
         # 查询预警信号
         if intent == "query_warning_signal" and label == "disaster":
-            sql = ["MATCH (d:disaster)-[]->(w:warning_signal) WHERE d.name='{0}' return w.name".format(e) for e in
+            sql = ["MATCH (d:disaster)-[]->(w:sub_signal) WHERE d.name='{0}' return d.name, w.name".format(e) for e in
                    entities]
 
-        # 查询 根据标准对应的预警信号
+        # 查询 根据标准查询对应的预警信号
+        # TODO
         if intent == "query_trigger_signal" and label == "trigger_entities":
             pass
 
@@ -77,17 +86,18 @@ class AnswerSearching:
         final_answers = []
         for sql_ in sqls:
             intent = sql_['intention']
+            label = sql_['label']
             queries = sql_['sql']
             answers = []
             for query in queries:
                 ress = self.graph.run(query).data()
                 answers += ress
-            final_answer = self.answer_template(intent, answers)
+            final_answer = self.answer_template(intent, label, answers)
             if final_answer:
                 final_answers.append(final_answer)
         return final_answers
 
-    def answer_template(self, intent, answers):
+    def answer_template(self, intent, label,  answers):
         """
         根据不同意图，返回不同模板的答案
         :param intent: 查询意图
@@ -97,75 +107,84 @@ class AnswerSearching:
         final_answer = ""
         if not answers:
             return ""
-        # 查询症状
-        if intent == "query_symptom":
-            disease_dic = {}
+        # 查询灾害简介
+        if intent == "query_desc" and label == 'disaster':
+            disaster_dic = {}
             for data in answers:
-                d = data['d.name']
-                s = data['s.name']
-                if d not in disease_dic:
-                    disease_dic[d] = [s]
+                name = data['p.name']
+                ekp = data['n.content']
+                if name not in disaster_dic:
+                    disaster_dic[name] = [ekp]
                 else:
-                    disease_dic[d].append(s)
+                    disaster_dic[name].append(ekp)
             i = 0
-            for k, v in disease_dic.items():
+            for k, v in disaster_dic.items():
                 if i >= 10:
                     break
-                final_answer += "疾病 {0} 的症状有：{1}\n".format(k, ','.join(list(set(v))))
+                final_answer += "\n\t灾害：{0}\n\t简介：{1}\n".format(k, v[0][:])
                 i += 1
-        # 查询疾病
-        if intent == "query_disease":
-            disease_freq = {}
+
+        # 查询预警信号标准
+        if intent == "query_desc" and label == 'sub_signal':
+            disaster_dic = {}
             for data in answers:
-                d = data["d.name"]
-                disease_freq[d] = disease_freq.get(d, 0) + 1
-            n = len(disease_freq.keys())
-            freq = sorted(disease_freq.items(), key=lambda x: x[1], reverse=True)
-            for d, v in freq[:10]:
-                final_answer += "疾病为 {0} 的概率为：{1}\n".format(d, v / 10)
-        # 查询治疗方法
-        if intent == "query_cureway":
-            disease_dic = {}
-            for data in answers:
-                disease = data['d.name']
-                treat = data["d.treatment"]
-                drug = data["n.name"]
-                if disease not in disease_dic:
-                    disease_dic[disease] = [treat, drug]
+                name = data['w.name']
+                standard = data['p.standard']
+                if name not in disaster_dic:
+                    disaster_dic[name] = [standard]
                 else:
-                    disease_dic[disease].append(drug)
+                    disaster_dic[name].append(standard)
             i = 0
-            for d, v in disease_dic.items():
+            for k, v in disaster_dic.items():
                 if i >= 10:
                     break
-                final_answer += "疾病 {0} 的治疗方法有：{1}；可用药品包括：{2}\n".format(d, v[0], ','.join(v[1:]))
+                final_answer += "\n\t预警信号：{0}\n\t标准：{1}\n".format(k, v[0][:])
                 i += 1
-        # 查询治愈周期
-        if intent == "query_period":
-            disease_dic = {}
+
+        # 查询防御措施 / 应急方法
+        if intent == "query_ekp" and label == "sub_signal":
+            disaster_dic = {}
             for data in answers:
-                d = data['d.name']
-                p = data['d.period']
-                if d not in disease_dic:
-                    disease_dic[d] = [p]
+                name = data['w.name']
+                ekp = data['p.ekp']
+                if name not in disaster_dic:
+                    disaster_dic[name] = [ekp]
                 else:
-                    disease_dic[d].append(p)
+                    disaster_dic[name].append(ekp)
             i = 0
-            for k, v in disease_dic.items():
+            for k, v in disaster_dic.items():
                 if i >= 10:
                     break
-                final_answer += "疾病 {0} 的治愈周期为：{1}\n".format(k, ','.join(list(set(v))))
+                final_answer += "\n\t预警信号：{0}\n\t防御措施 / 应急方法：{1}\n".format(k, v[0][:])
                 i += 1
+
+        # 查询有哪些预警信号
+        if intent == "query_warning_signal" and label == "disaster":
+            disaster_dic = {}
+            for data in answers:
+                name = data['d.name']
+                signals = data['w.name']
+                if name not in disaster_dic:
+                    disaster_dic[name] = [signals]
+                else:
+                    disaster_dic[name].append(signals)
+            i = 0
+            for k, v in disaster_dic.items():
+                if i >= 10:
+                    break
+                final_answer += "\n\t灾害：{0}\n\t预警信号：{1}\n".format(k, '，'.join(v))
+                i += 1
+
         # 查询治愈率
         if intent == "query_rate":
             disease_dic = {}
             for data in answers:
-                d = data['d.name']
+                name = data['d.name']
                 r = data['d.rate']
-                if d not in disease_dic:
-                    disease_dic[d] = [r]
+                if name not in disease_dic:
+                    disease_dic[name] = [r]
                 else:
-                    disease_dic[d].append(r)
+                    disease_dic[name].append(r)
             i = 0
             for k, v in disease_dic.items():
                 if i >= 10:
@@ -176,12 +195,12 @@ class AnswerSearching:
         if intent == "query_checklist":
             disease_dic = {}
             for data in answers:
-                d = data['d.name']
+                name = data['d.name']
                 r = data['d.checklist']
-                if d not in disease_dic:
-                    disease_dic[d] = [r]
+                if name not in disease_dic:
+                    disease_dic[name] = [r]
                 else:
-                    disease_dic[d].append(r)
+                    disease_dic[name].append(r)
             i = 0
             for k, v in disease_dic.items():
                 if i >= 10:
@@ -192,12 +211,12 @@ class AnswerSearching:
         if intent == "query_department":
             disease_dic = {}
             for data in answers:
-                d = data['d.name']
+                name = data['d.name']
                 r = data['n.name']
-                if d not in disease_dic:
-                    disease_dic[d] = [r]
+                if name not in disease_dic:
+                    disease_dic[name] = [r]
                 else:
-                    disease_dic[d].append(r)
+                    disease_dic[name].append(r)
             i = 0
             for k, v in disease_dic.items():
                 if i >= 10:

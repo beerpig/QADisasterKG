@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+<div>
+    <label for="send_content">向后台发送消息：</label>
+    <input id="send_content" type="text" name="send_content">
+    <input id="send" type="button" value="发送">
+</div>
+<div>
+    <label for="recv_content">从后台接收消息：</label>
+    <textarea id="recv_content" type="text" name="recv_content"></textarea>
+</div>
+
+
+<script src="http://apps.bdimg.com/libs/jquery/2.1.4/jquery.js"></script>
+<!-- 发送 -->
+<script type="text/javascript">
+    $("#send").click(function () {
+        var message = $("#send_content").val()
+        $.ajax({
+            url:"http://127.0.0.1:5000/send_message",
+            type:"GET",
+            data:{
+                message:message
+            },
+            success:function (data) {
+                alert(data)
+            },
+            error:function () {
+                alert("接收失败")
+            }
+        })
+    })
+</script>
+
+<!-- 接收 -->
+<script type="text/javascript">
+    $("#send").click(function () {
+        $.getJSON("http://127.0.0.1:5000/change_to_json",function (data) {
+            $("#recv_content").val(data.message) //将后端数据显示在前端
+            console.log("传到前端的数据的类型：" + typeof (data.message))
+            $("#send_content").val("")//发送的输入框清空
+        })
+    })
+</script>
+
+</body>
+</html>
