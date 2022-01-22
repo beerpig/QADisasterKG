@@ -51,7 +51,7 @@ class AnswerSearching:
                    for e in entities]
 
         # 查询预警信号标准
-        if intent == "query_desc" and label == "sub_warning_signal":
+        if intent == "query_desc" and label == "sub_signal":
             sql = ["MATCH (w:sub_signal) WHERE w.name=~'{0}.*' Match (w)-[r:rels_standard2sub_signal]-(p) \
                     RETURN w.name, p.standard".format(e)
                    for e in entities]
@@ -121,7 +121,7 @@ class AnswerSearching:
             for k, v in disaster_dic.items():
                 if i >= 10:
                     break
-                final_answer += "\n\t灾害：{0}\n\t简介：{1}\n".format(k, v[0][:])
+                final_answer += "灾害：{0}\n简介：{1}".format(k, v[0][:])
                 i += 1
 
         # 查询预警信号标准
@@ -138,7 +138,7 @@ class AnswerSearching:
             for k, v in disaster_dic.items():
                 if i >= 10:
                     break
-                final_answer += "\n\t预警信号：{0}\n\t标准：{1}\n".format(k, v[0][:])
+                final_answer += "预警信号：{0}\n标准：{1}".format(k, v[0][:])
                 i += 1
 
         # 查询防御措施 / 应急方法
@@ -155,7 +155,7 @@ class AnswerSearching:
             for k, v in disaster_dic.items():
                 if i >= 10:
                     break
-                final_answer += "\n\t预警信号：{0}\n\t防御措施 / 应急方法：{1}\n".format(k, v[0][:])
+                final_answer += "预警信号：{0}\n防御措施 / 应急方法：{1}".format(k, v[0][:])
                 i += 1
 
         # 查询有哪些预警信号
@@ -172,7 +172,7 @@ class AnswerSearching:
             for k, v in disaster_dic.items():
                 if i >= 10:
                     break
-                final_answer += "\n\t灾害：{0}\n\t预警信号：{1}\n".format(k, '，'.join(v))
+                final_answer += "灾害：{0}\n预警信号：{1}".format(k, '，'.join(v))
                 i += 1
 
         # 查询治愈率
