@@ -1,4 +1,5 @@
 from py2neo import Graph
+from tqdm import tqdm
 
 
 class AnswerSearching:
@@ -18,14 +19,19 @@ class AnswerSearching:
                 sql_ = {}
                 sql_["intention"] = intent
                 sql = []
-                if data.get("sub_warning_signal"):
-                    sql = self.transfor_to_sql("sub_signal", data["sub_warning_signal"], intent)
-                    sql_["label"] = "sub_signal"
-                elif data.get("disaster"):
-                    sql = self.transfor_to_sql("disaster", data["disaster"], intent)
-                    sql_["label"] = "disaster"
-                elif data.get("trigger_entities"):
-                    sql = self.transfor_to_sql("trigger_entities", data["trigger_entities"], intent)
+                if intent == 'query_standard':
+                    sql = self.transfor_to_sql4query_standard(data['question_split'], intent)
+                    sql_["label"] = "standard_split"
+                    sql_["data"] = data['question_split']
+                else:
+                    if data.get("sub_warning_signal"):
+                        sql = self.transfor_to_sql("sub_signal", data["sub_warning_signal"], intent)
+                        sql_["label"] = "sub_signal"
+                    elif data.get("disaster"):
+                        sql = self.transfor_to_sql("disaster", data["disaster"], intent)
+                        sql_["label"] = "disaster"
+                    elif data.get("trigger_entities"):
+                        sql = self.transfor_to_sql("trigger_entities", data["trigger_entities"], intent)
 
                 if sql:
                     sql_['sql'] = sql
@@ -70,11 +76,26 @@ class AnswerSearching:
             sql = ["MATCH (d:disaster)-[]->(w:sub_signal) WHERE d.name='{0}' return d.name, w.name".format(e) for e in
                    entities]
 
-        # 查询 根据标准查询对应的预警信号
-        # TODO
-        if intent == "query_trigger_signal" and label == "trigger_entities":
-            pass
+        return sql
 
+    def transfor_to_sql4query_standard(self, question_split, intent):
+        sql = []
+        if intent == 'query_standard':
+            for i in question_split:
+                word = i[0]
+                tag = i[1]
+                if tag == 'TIME' or tag == 'm' or tag == 'mf' or tag == 'vm' or tag == 'an' or tag == 'n':
+                    # 查询慢 20秒左右
+                    # sql_ = 'match p=(x)-[*]-(y)-[*]->(z) ' \
+                    #        'where x.name="dummy" and y.name="%s" and z.name=~".*信号" return p' % (
+                    #            word
+                    #        )
+                    # 10秒左右
+                    sql_ = 'match p=(x)-[:rels_standard_split*]-(y)-[:rels_standard_split*]->(z) ' \
+                           'where x.name="dummy" and y.name="%s" and z.name=~".*信号" return p' % (
+                               word
+                           )
+                    sql.append(sql_)
         return sql
 
     def searching(self, sqls):
@@ -89,15 +110,48 @@ class AnswerSearching:
             label = sql_['label']
             queries = sql_['sql']
             answers = []
-            for query in queries:
-                ress = self.graph.run(query).data()
-                answers += ress
-            final_answer = self.answer_template(intent, label, answers)
+            final_answer = ''
+            if intent == 'query_standard':
+                for q in queries:
+                    results = self.graph.run(q).data()
+                    split_list = sql_['data']
+                    candidate_ans = []
+                    candidate_ans_standard = []
+                    max = 0
+                    if len(results) > 0:
+                        for r in tqdm(results):
+                            node_list = [i['name'] for i in r['p'].nodes]
+                            cnt = 0
+                            for sl in split_list:
+                                if sl[0] in node_list:
+                                    cnt += 1
+                            if cnt != 0 and cnt >= max:
+                                candidate_ans.append((r['p'].end_node['name'], cnt))
+                                max = cnt
+                    final_candidate_ans = []
+                    for n in candidate_ans:
+                        if n[1] == max:
+                            final_candidate_ans.append(n)
+                    if len(final_candidate_ans) > 0:
+                        query_standard_sqls = ['match (p)-[r:rels_standard2sub_signal]->(q) where q.name="{0}" return ' \
+                                               'p.standard'.format(i[0]) for i in final_candidate_ans]
+                        for query_standard_sql in tqdm(query_standard_sqls):
+                            standard = self.graph.run(query_standard_sql).data()
+                            candidate_ans_standard.append(standard[0]['p.standard'])
+
+                        send = zip(final_candidate_ans, candidate_ans_standard)
+                        final_answer += self.answer_template(intent, label, list(send))
+                        break
+            else:
+                for query in queries:
+                    ress = self.graph.run(query).data()
+                    answers += ress
+                    final_answer = self.answer_template(intent, label, answers)
             if final_answer:
                 final_answers.append(final_answer)
         return final_answers
 
-    def answer_template(self, intent, label,  answers):
+    def answer_template(self, intent, label, answers):
         """
         根据不同意图，返回不同模板的答案
         :param intent: 查询意图
@@ -175,77 +229,9 @@ class AnswerSearching:
                 final_answer += "灾害：{0}\n预警信号：{1}".format(k, '，'.join(v))
                 i += 1
 
-        # 查询治愈率
-        if intent == "query_rate":
-            disease_dic = {}
-            for data in answers:
-                name = data['d.name']
-                r = data['d.rate']
-                if name not in disease_dic:
-                    disease_dic[name] = [r]
-                else:
-                    disease_dic[name].append(r)
-            i = 0
-            for k, v in disease_dic.items():
-                if i >= 10:
-                    break
-                final_answer += "疾病 {0} 的治愈率为：{1}\n".format(k, ','.join(list(set(v))))
-                i += 1
-        # 查询检查项目
-        if intent == "query_checklist":
-            disease_dic = {}
-            for data in answers:
-                name = data['d.name']
-                r = data['d.checklist']
-                if name not in disease_dic:
-                    disease_dic[name] = [r]
-                else:
-                    disease_dic[name].append(r)
-            i = 0
-            for k, v in disease_dic.items():
-                if i >= 10:
-                    break
-                final_answer += "疾病 {0} 的检查项目有：{1}\n".format(k, ','.join(list(set(v))))
-                i += 1
-        # 查询科室
-        if intent == "query_department":
-            disease_dic = {}
-            for data in answers:
-                name = data['d.name']
-                r = data['n.name']
-                if name not in disease_dic:
-                    disease_dic[name] = [r]
-                else:
-                    disease_dic[name].append(r)
-            i = 0
-            for k, v in disease_dic.items():
-                if i >= 10:
-                    break
-                final_answer += "疾病 {0} 所属科室有：{1}\n".format(k, ','.join(list(set(v))))
-                i += 1
-        # 查询疾病描述
-        if intent == "disease_describe":
-            disease_infos = {}
-            for data in answers:
-                name = data['d.name']
-                age = data['d.age']
-                insurance = data['d.insurance']
-                infection = data['d.infection']
-                checklist = data['d.checklist']
-                period = data['d.period']
-                rate = data['d.rate']
-                money = data['d.money']
-                if name not in disease_infos:
-                    disease_infos[name] = [age, insurance, infection, checklist, period, rate, money]
-                else:
-                    disease_infos[name].extend([age, insurance, infection, checklist, period, rate, money])
-            i = 0
-            for k, v in disease_infos.items():
-                if i >= 10:
-                    break
-                message = "疾病 {0} 的描述信息如下：\n发病人群：{1}\n医保：{2}\n传染性：{3}\n检查项目：{4}\n" \
-                          "治愈周期：{5}\n治愈率：{6}\n费用：{7}\n"
-                final_answer += message.format(k, v[0], v[1], v[2], v[3], v[4], v[5], v[6])
-                i += 1
+        # 查询信号标准
+        if intent == "query_standard" and label == "standard_split":
+            for i in answers:
+                final_answer += "预警信号：{0}\n标准：{1}\n".format(i[0][0], i[1])
 
         return final_answer

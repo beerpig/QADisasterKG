@@ -2,7 +2,10 @@ import os
 import ahocorasick
 import jieba
 import numpy as np
+import jieba.posseg as pseg
 import joblib
+
+
 # from sklearn.externals import joblib
 
 
@@ -278,8 +281,8 @@ class EntityExtractor:
     # 实体抽取主函数
     def extractor(self, question):
         self.entity_reg(question)
-        if not self.result:
-            self.find_sim_words(question)
+        # if not self.result:
+        #     self.find_sim_words(question)
 
         types = []  # 实体类型
         for v in self.result.keys():
@@ -335,6 +338,14 @@ class EntityExtractor:
             if intention not in intentions:
                 intentions.append(intention)
 
+        # 只有实体，没有意图，查询预警信号标准
+        elif not intentions:
+            zs = list(self.split_words(question))
+            if len(zs) > 0:
+                intention = "query_standard"
+                intentions.append(intention)
+                self.result['question_split'] = zs
+
         # 若没有识别出实体或意图则调用其它方法
         elif not intentions or not types:
             intention = "QA_matching"
@@ -344,3 +355,36 @@ class EntityExtractor:
         self.result["intentions"] = intentions
 
         return self.result
+
+    def split_words(self, question):
+        jieba.enable_paddle()
+        HMM_paddle_cut = pseg.lcut(question, HMM=True, use_paddle=True)
+        output = []
+        tags = []
+        for i in range(len(HMM_paddle_cut)):
+            if HMM_paddle_cut[i].flag == 'TIME':
+                output.append(HMM_paddle_cut[i].word)
+                tags.append(HMM_paddle_cut[i].flag)
+            if HMM_paddle_cut[i].flag == 'n' and HMM_paddle_cut[i].word != '，':
+                output.append(HMM_paddle_cut[i].word)
+                tags.append(HMM_paddle_cut[i].flag)
+                if i - 1 >= 0 and HMM_paddle_cut[i].word != '，' and (
+                        HMM_paddle_cut[i - 1].flag == 'n' or HMM_paddle_cut[i - 1].flag == 'a'):
+                    output.append(HMM_paddle_cut[i - 1].word + HMM_paddle_cut[i].word)
+                    tags.append(HMM_paddle_cut[i - 1].flag + HMM_paddle_cut[i].flag)
+            if HMM_paddle_cut[i].flag == 'm':
+                output.append(HMM_paddle_cut[i].word)
+                tags.append(HMM_paddle_cut[i].flag)
+                if i + 1 < len(HMM_paddle_cut) and HMM_paddle_cut[i + 1].flag == 'f':
+                    output.append(HMM_paddle_cut[i].word + HMM_paddle_cut[i + 1].word)
+                    tags.append(HMM_paddle_cut[i].flag + HMM_paddle_cut[i + 1].flag)
+                if HMM_paddle_cut[i - 1].flag == 'v':
+                    output.append(HMM_paddle_cut[i - 1].word + HMM_paddle_cut[i].word)
+                    tags.append(HMM_paddle_cut[i - 1].flag + HMM_paddle_cut[i].flag)
+        ll = []
+        tags_t = []
+        for i in range(len(output)):
+            if not output[i] in ll:
+                ll.append(output[i])
+                tags_t.append(tags[i])
+        return zip(ll, tags_t)
